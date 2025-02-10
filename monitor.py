@@ -17,14 +17,28 @@ def setup_database():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     
     with sqlite3.connect(DB_FILE) as conn:
+        # Table for peer information
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS peer_usage (
+            CREATE TABLE IF NOT EXISTS peers (
                 public_key TEXT PRIMARY KEY,
-                accumulated_received INTEGER,  -- Total including restarts
-                accumulated_sent INTEGER,      -- Total including restarts
-                last_received INTEGER,        -- Last counter value
-                last_sent INTEGER,            -- Last counter value
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                name TEXT,              -- Friendly name for the peer
+                email TEXT,             -- Optional contact
+                added_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table for monthly usage
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS monthly_usage (
+                public_key TEXT,
+                year_month TEXT,        -- Format: YYYY-MM
+                accumulated_received INTEGER,
+                accumulated_sent INTEGER,
+                last_received INTEGER,
+                last_sent INTEGER,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (public_key, year_month),
+                FOREIGN KEY (public_key) REFERENCES peers(public_key)
             )
         """)
 
