@@ -1,4 +1,4 @@
-#!/usr/bin/env python3 
+#!/opt/vpn-monitor/venv/bin/python3
 
 import sqlite3
 import subprocess
@@ -44,6 +44,14 @@ def setup_database():
 
 
 
+def ensure_peer_exists(conn, public_key):
+    """Make sure peer is in the peers table."""
+    conn.execute("""
+        INSERT OR IGNORE INTO peers (public_key)
+        VALUES (?)
+    """, (public_key,))
+
+
 
 def get_wireguard_data():
     """Collect current WireGuard statistics."""
@@ -70,43 +78,54 @@ def get_wireguard_data():
 
 
 def store_measurement(conn, peer_data):
-    """Update peer usage, handling counter resets."""
+    """Store monthly usage data for a peer."""
+    current_month = datetime.datetime.now().strftime('%Y-%m')
+    
+    # Ensure peer exists
+    ensure_peer_exists(conn, peer_data['public_key'])
+    
+    # Get last measurement for this month
     last = conn.execute("""
         SELECT accumulated_received, accumulated_sent,
                last_received, last_sent
-        FROM peer_usage 
-        WHERE public_key = ?
-    """, (peer_data['public_key'],)).fetchone()
+        FROM monthly_usage 
+        WHERE public_key = ? AND year_month = ?
+    """, (peer_data['public_key'], current_month)).fetchone()
 
     if last:
-        # Calculate deltas
-        received_delta = peer_data['received'] - last[2]  # current - last_received
-        sent_delta = peer_data['sent'] - last[3]         # current - last_sent
-        
-        # If deltas are negative (counter reset), add current values
-        new_accumulated_received = last[0] + (received_delta if received_delta > 0 else peer_data['received'])
-        new_accumulated_sent = last[1] + (sent_delta if sent_delta > 0 else peer_data['sent'])
-        
+        # Check for counter reset
+        if peer_data['received'] < last[2] or peer_data['sent'] < last[3]:
+            # Counter reset - add new values to accumulated
+            new_accumulated_received = last[0] + peer_data['received']
+            new_accumulated_sent = last[1] + peer_data['sent']
+        else:
+            # Normal case - add the difference
+            received_diff = peer_data['received'] - last[2]
+            sent_diff = peer_data['sent'] - last[3]
+            new_accumulated_received = last[0] + max(0, received_diff)
+            new_accumulated_sent = last[1] + max(0, sent_diff)
+
         conn.execute("""
-            UPDATE peer_usage 
+            UPDATE monthly_usage 
             SET accumulated_received = ?,
                 accumulated_sent = ?,
                 last_received = ?,
                 last_sent = ?,
                 last_updated = CURRENT_TIMESTAMP
-            WHERE public_key = ?
+            WHERE public_key = ? AND year_month = ?
         """, (new_accumulated_received, new_accumulated_sent,
               peer_data['received'], peer_data['sent'],
-              peer_data['public_key']))
+              peer_data['public_key'], current_month))
     else:
-        # First time seeing this peer
+        # First measurement for this month
         conn.execute("""
-            INSERT INTO peer_usage 
-            (public_key, accumulated_received, accumulated_sent,
+            INSERT INTO monthly_usage 
+            (public_key, year_month, accumulated_received, accumulated_sent,
              last_received, last_sent)
-            VALUES (?, ?, ?, ?, ?)
-        """, (peer_data['public_key'], peer_data['received'],
-              peer_data['sent'], peer_data['received'], peer_data['sent']))
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (peer_data['public_key'], current_month,
+              peer_data['received'], peer_data['sent'],
+              peer_data['received'], peer_data['sent']))
 
 
 
@@ -126,11 +145,11 @@ if __name__ == "__main__":
                 # Get peer data including first seen time
                 peer_data = conn.execute("""
                     SELECT 
-                        accumulated_received/1024/1024 as mb_received,
-                        accumulated_sent/1024/1024 as mb_sent,
-                        (accumulated_received + accumulated_sent)/1024/1024 as mb_total,
+                        accumulated_received/(1024*1024) as mb_received,
+                        accumulated_sent/(1024*1024) as mb_sent,
+                        (accumulated_received + accumulated_sent)/(1024*1024) as mb_total,
                         (strftime('%s', 'now') - strftime('%s', last_updated)) as seconds_elapsed
-                    FROM peer_usage 
+                    FROM monthly_usage 
                     WHERE public_key = ?
                 """, (peer['public_key'],)).fetchone()
                 
