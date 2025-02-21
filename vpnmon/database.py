@@ -1,3 +1,5 @@
+# database setup
+
 from pathlib import Path
 import sqlite3
 from datetime import datetime
@@ -39,3 +41,31 @@ class Database:
                 )
             """)
     
+    def get_peer_usage(self, public_key: str = None, month: str = None):
+        """Get usage statistics for one or all peers."""
+        with sqlite3.connect(self.db_file) as conn:
+            query = """
+                SELECT 
+                    m.public_key,
+                    p.name,
+                    m.year_month,
+                    m.accumulated_received,
+                    m.accumulated_sent,
+                    m.last_updated
+                FROM monthly_usage m
+                LEFT JOIN peers p ON m.public_key = p.public_key
+                WHERE 1=1
+            """
+            params = []
+            
+            if public_key:
+                query += " AND m.public_key = ?"
+                params.append(public_key)
+            
+            if month:
+                query += " AND m.year_month = ?"
+                params.append(month)
+                
+            query += " ORDER BY m.year_month DESC, m.last_updated DESC"
+            
+            return conn.execute(query, params).fetchall()

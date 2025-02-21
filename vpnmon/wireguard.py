@@ -1,3 +1,5 @@
+# Collect data from wireguard interface
+
 import subprocess
 from typing import List, Dict, Optional
 
@@ -9,7 +11,7 @@ class WireGuard:
         """Get current WireGuard statistics for all peers."""
         try:
             output = subprocess.check_output(
-                ["wg", "show", self.interface, "dump"],
+                ["sudo", "wg", "show", self.interface, "dump"],
                 text=True
             )
             peers = []
