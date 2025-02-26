@@ -109,40 +109,48 @@ class VPNMonitor:
     
     def update_peer_info(self, public_key: str, name: str = None, email: str = None):
         """Update peer information."""
-        with sqlite3.connect(self.db.db_file) as conn:
-            # Check if peer exists
-            existing = conn.execute(
-                "SELECT 1 FROM peers WHERE public_key = ?",
-                (public_key,)
-            ).fetchone()
-
-            if existing:
-                # Update existing peer
-                if name is not None or email is not None:
-                    query = "UPDATE peer SET "
-                    params = []
-                    updates = []
-
-                    if name is not None:
-                        updates.append("name = ?")
-                        params.append(name)
-
-                    if email is not None:
-                        updates.append("email = ?")
-                        params.append(email)
-                    
-                    query += ", ".join(updates)
-                    query += " WHERE public_key = ?"
-                    params.append(public_key)
-
-                    conn.execute(query, params)
-                    return True 
+        try:
+            with sqlite3.connect(self.db.db_file) as conn:
+                # Check if peer exists
+                existing = conn.execute(
+                    "SELECT 1 FROM peers WHERE public_key = ?", 
+                    (public_key,)
+                ).fetchone()
+                
+                if existing:
+                    # Update existing peer
+                    print(f"Updating existing peer: {public_key}")
+                    if name is not None or email is not None:
+                        query = "UPDATE peers SET "
+                        params = []
+                        updates = []
+                        
+                        if name is not None:
+                            updates.append("name = ?")
+                            params.append(name)
+                            
+                        if email is not None:
+                            updates.append("email = ?")
+                            params.append(email)
+                            
+                        query += ", ".join(updates)
+                        query += " WHERE public_key = ?"
+                        params.append(public_key)
+                        
+                        conn.execute(query, params)
+                        return True
                 else:
                     # Insert new peer
+                    print(f"Inserting new peer: {public_key}, name: {name}, email: {email}")
                     conn.execute(
-                        "INSET INTO peers (public_key, name, email) VALUES (?, ?, ?)",
+                        "INSERT INTO peers (public_key, name, email) VALUES (?, ?, ?)",
                         (public_key, name, email)
                     )
                     return True
-                    
+            
+            return False
+        except Exception as e:
+            print(f"Database error: {e}")
+            import traceback
+            traceback.print_exc()
             return False
