@@ -3,12 +3,15 @@
 
 import sys
 import argparse
+import re
 from pathlib import Path
 from tabulate import tabulate
 
 # Add parent directory to path so we can import vpnmon
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from vpnmon.core import VPNMonitor
+
+
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description="Wireguard VPN Monitoring Tool")
@@ -31,17 +34,36 @@ def setup_argparse():
     peer_parser.add_argument("--name", help="Peer friendly name")
     peer_parser.add_argument("--email", help="Peer email address")
 
+    # Generates a new peer
+    def email_validator(email):
+        """Validate email format."""
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(pattern, email):
+            raise argparse.ArgumentTypeError(f"Invalid email format: {email}")
+        return email
+    generate_parser = subparsers.add_parser("generate-peer", help="Generate a new WireGuard peer")
+    generate_parser.add_argument("name", help="User's name")
+    generate_parser.add_argument("email", type=email_validator, help="User's email (required)")
+
+    # Delete a peer by an email
+    delete_parser = subparsers.add_parser("delete-peer", help="Deletes a peer by an email")
+    delete_parser.add_argument("email", type=email_validator, help="User's email for deletion")
+
     return parser
+
 
 def main():
     parser = setup_argparse()
     args = parser.parse_args()
 
+    # Creating an object of a class VPNMonitor()
     monitor = VPNMonitor()
 
     if args.command == "setup":
         monitor.setup()
         print("Database intialized successfully")
+
+
 
     elif args.command == "collect":
         if monitor.collect_data():
@@ -49,6 +71,8 @@ def main():
         else:
             print("Failed to collect data")
     
+
+
     elif args.command == "usage":
         data = monitor.get_usage(args.peer, args.month)
 
@@ -66,12 +90,62 @@ def main():
         ]
         print(tabulate(table_data, headers=headers, tablefmt='grid'))
 
+
+
     elif args.command == "update-peer":
         if monitor.update_peer_info(args.public_key, args.name, args.email):
             print(f"Peer {args.public_key} updated successfully")
         else:
             print(f"Failed to update peer {args.public_key}")
     
+
+
+    elif args.command == "generate-peer":
+        # Generate keys
+        keys = monitor.wireguard.generate_keys()
+        if not keys:
+            print("Failed to generate WireGuard keys")
+            sys.exit(1)
+
+        # Get next available IP
+        next_ip = monitor.wireguard.get_next_ip()
+
+        # Add to WireGuard config
+        if not monitor.wireguard.add_peer_to_config(keys["public_key"], next_ip):
+            print("Failed to add peer to WireGuard configuration")
+            sys.exit(1)
+        
+        # Add user to database
+        if not monitor.update_peer_info(keys["public_key"], args.name, args.email):
+            print("Failed to add user to database")
+            sys.exit(1)
+        
+        # Show results
+        print("\nNew WireGuard Peer Generated\n")
+        print(f"Name: {args.name}")
+        if args.email:
+            print(f"Email: {args.email}")
+        print(f"IP Address: {next_ip}")
+        print("\nClient Configuration:")
+        print("---------------------")
+        print("[Interface]")
+        print(f"PrivateKey = {keys['private_key']}")
+        print("Address = " + next_ip)
+        print("DNS = 1.1.1.1, 8.8.8.8")
+        print()
+        print("[Peer]")
+        print(f"PublicKey = {monitor.wireguard.get_server_public_key()}")
+        print("AllowedIPs = 0.0.0.0/0")
+        print(f"Endpoint = {monitor.wireguard.get_server_endpoint()}")
+        print("PersistentKeepalive = 25")
+
+
+
+
+    elif args.command == "delete-peer":
+        
+
+
     else:
         parser.print_help()
 
