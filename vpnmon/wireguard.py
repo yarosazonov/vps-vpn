@@ -1,11 +1,16 @@
 # Wireguard specific operations
 
 import subprocess
+import logging
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 class WireGuard:
     def __init__(self, interface: str = "wg0"):
         self.interface = interface
+
+
 
     def get_peer_data(self) -> List[Dict]:
         """Get current WireGuard statistics for all peers."""
@@ -27,9 +32,12 @@ class WireGuard:
                     })
             return peers
         except subprocess.CalledProcessError as e:
-            print(f"Error getting WireGuard data: {e}")
+            logger.exception("Error getting WireGuard data")
             return []
         
+
+
+
     def generate_keys(self):
         """Generate a new WireGuard key pair."""
         try:
@@ -43,26 +51,28 @@ class WireGuard:
                 "public_key": public_key
             }
         except subprocess.CalledProcessError as e:
-            print(f"Error generating WireGuard keys: {e}")
-            print(f"Private key type: {type(private_key)}")
+            logger.exception("Error generating WireGuard keys")
             return None
+
+
+
 
     def add_peer_to_config(self, public_key, allowed_ips, config_file="/etc/wireguard/wg0.conf"):
         """Dynamically add a peer to WireGuard and persist it in the config file."""
         try:
             # Apply the peer dynamically
-            print(f"Attempting to set WireGuard peer: {public_key} with allowed IPs: {allowed_ips}")
+            logger.info(f"Attempting to set WireGuard peer: {public_key} with allowed IPs: {allowed_ips}")
             set_result = subprocess.run([
                 "sudo", "wg", "set", self.interface, "peer", 
                 public_key, "allowed-ips", allowed_ips
             ], check=False, capture_output=True, text=True)
             
             if set_result.returncode != 0:
-                print(f"WireGuard set command failed: {set_result.stderr}")
+                logger.error(f"WireGuard set command failed: {set_result.stderr}")
                 return False
             
             # Append to the configuration file for persistence using sudo
-            print(f"Attempting to update config file: {config_file}")
+            logger.info(f"Attempting to update config file: {config_file}")
             peer_config = f"\n[Peer]\nPublicKey = {public_key}\nAllowedIPs = {allowed_ips}\n"
             tee_result = subprocess.run(
                 ["sudo", "tee", "-a", config_file], 
@@ -73,17 +83,17 @@ class WireGuard:
             )
             
             if tee_result.returncode != 0:
-                print(f"Config file update failed: {tee_result.stderr}")
+                logger.error(f"Config file update failed: {tee_result.stderr}")
                 return False
                 
-            print("Peer added successfully")
+            logger.info("Peer added successfully")    
             return True
         except Exception as e:
-            print(f"Error adding peer to config: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error adding peer to config")
             return False
     
+
+
     def get_next_ip(self, config_file="/etc/wireguard/wg0.conf"):
         """Get the next available IP address in the subnet."""
         try:
@@ -114,31 +124,19 @@ class WireGuard:
             # Return next IP
             return f"10.0.0.{highest + 1}/32"
         except Exception as e:
-            print(f"Error finding next IP: {e}")
+            logger.exception("Error finding next IP")
             return "10.0.0.2/32"  # Fallback to first client IP
         
     
+
     def get_server_public_key(self, config_file="/etc/wireguard/wg0.conf"):
         """Get the server's public key from the config file."""
-        try:
-            # with open(config_file, 'r') as f:
-            #     config = f.readlines()
-                
-            # for line in config:
-            #     if line.strip().startswith("PrivateKey"):
-            #         private_key = line.split("=")[1].strip()
-            #         public_key = subprocess.check_output(
-            #             ["wg", "pubkey"], 
-            #             input=private_key.encode(), 
-            #             text=True
-            #         ).strip()
-            #         return public_key
-                
+        try:   
             # Fallback: Get from interface directly
             output = subprocess.check_output(["wg", "show", self.interface, "public-key"], text=True)
             return output.strip()
         except Exception as e:
-            print(f"Error getting server public key: {e}")
+            logger.exception("Error getting server public key")
             return None
         
     
@@ -158,5 +156,25 @@ class WireGuard:
                     
             return f"{ip}:51820"  # Default port if not found
         except Exception as e:
-            print(f"Error getting server endpoint: {e}")
+            logger.exception("Error getting server endpoint")
             return "95.179.186:51820"  # Fallback
+        
+
+
+    def _remove_peer_from_interface(self, public_key):
+        """Dynamically remove a peer from WireGuard interface."""
+        try:
+            # Apply the peer dynamically
+            logger.info(f"Attempting to remove a WireGuard peer: {public_key}")
+            set_result = subprocess.run([
+                "sudo", "wg", "set", self.interface, "peer", public_key, "remove"
+            ], check=False, capture_output=True, text=True)
+
+            if set_result.returncode != 0:
+                logger.error(f"WireGuard set command failed: {set_result.stderr}")
+                return False
+            
+            logger.info(f"Peer removed from a {self.interface} interface successfully")
+            return True
+        except Exception as e:
+            logger.exception("Error removing a peer from interface")
