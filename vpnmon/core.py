@@ -154,3 +154,6 @@ class VPNMonitor:
             import traceback
             traceback.print_exc()
             return False
+    
+    def delete_peer(self, email: str)
+        

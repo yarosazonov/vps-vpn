@@ -3,12 +3,15 @@
 
 import sys
 import argparse
+import re
 from pathlib import Path
 from tabulate import tabulate
 
 # Add parent directory to path so we can import vpnmon
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from vpnmon.core import VPNMonitor
+
+
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description="Wireguard VPN Monitoring Tool")
@@ -32,16 +35,28 @@ def setup_argparse():
     peer_parser.add_argument("--email", help="Peer email address")
 
     # Generates a new peer
+    def email_validator(email):
+        """Validate email format."""
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(pattern, email):
+            raise argparse.ArgumentTypeError(f"Invalid email format: {email}")
+        return email
     generate_parser = subparsers.add_parser("generate-peer", help="Generate a new WireGuard peer")
     generate_parser.add_argument("name", help="User's name")
-    generate_parser.add_argument("--email", help="User's email (optional)")
+    generate_parser.add_argument("email", type=email_validator, help="User's email (required)")
+
+    # Delete a peer by an email
+    delete_parser = subparsers.add_parser("delete-peer", help="Deletes a peer by an email")
+    delete_parser.add_argument("email", type=email_validator, help="User's email for deletion")
 
     return parser
+
 
 def main():
     parser = setup_argparse()
     args = parser.parse_args()
 
+    # Creating an object of a class VPNMonitor()
     monitor = VPNMonitor()
 
     if args.command == "setup":
@@ -124,6 +139,11 @@ def main():
         print(f"Endpoint = {monitor.wireguard.get_server_endpoint()}")
         print("PersistentKeepalive = 25")
 
+
+
+
+    elif args.command == "delete-peer":
+        
 
 
     else:
