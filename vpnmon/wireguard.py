@@ -2,6 +2,9 @@
 
 import subprocess
 import logging
+import os
+from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -178,3 +181,169 @@ class WireGuard:
             return True
         except Exception as e:
             logger.exception("Error removing a peer from interface")
+            return False
+
+
+
+    def _restore_config_from_backup(self, path_to_conf, path_to_backup):
+        """Restore configuration from backup if something goes wrong."""
+        try:
+            logger.warning(f"Attempting to restore {self.interface}.conf from backup")
+            restore_result = subprocess.run([
+                "sudo", "cp", "-f", path_to_backup, path_to_conf
+            ], check=False, capture_output=True, text=True)
+            
+            if restore_result.returncode != 0:
+                logger.error(f"Failed to restore from backup: {restore_result.stderr}")
+                return False
+                
+            logger.info(f"Successfully restored {self.interface}.conf from backup")
+            return True
+        except Exception as e:
+            logger.exception(f"Error restoring from backup")
+            return False
+
+
+
+    def _remove_peer_from_config(self, public_key):
+        """Remove peer from .conf file"""
+        # Path to .conf
+        path_to_conf = Path(f"/etc/wireguard/{self.interface}.conf")
+        # single backup setup
+        path_to_backup = Path(f"/etc/wireguard/{self.interface}_backup_.conf")
+
+        # Check if file exists
+        if not os.path.exists(path_to_conf):
+            logger.error(f"Configuration file {path_to_conf} does not exist")
+            return False
+        else:
+            logger.info("Config found")
+
+        try:
+            # Attempting to make a backup of .conf
+            logger.info("Attempt on backup creation")
+            make_backup = subprocess.run([
+                "sudo", "cp", path_to_conf, "-p", path_to_backup
+            ], check=False, capture_output=True, text=True)
+
+            if make_backup.returncode != 0:
+                logger.error(f"{self.interface} backup failed: {make_backup.stderr}")
+                return False
+
+            logger.info(f"{self.interface} backup created successfully")
+        except Exception as e:
+            logger.exception("Error creating backup")
+            return False
+        
+        # Editing .conf 
+        try:
+            logger.info(f"Parsing .conf for a peer")
+            read_conf = subprocess.run([
+                "sudo", "cat", path_to_conf
+            ], check=False, capture_output=True, text=True)
+            conf_lines = read_conf.stdout.split("\n")
+
+           
+
+            # Parse config file
+            keep_lines = []
+            peer_lines = []
+            in_peer_section = False
+            skip_current_peer = False
+            found_peer = False
+            
+            for line in conf_lines:
+                # Start of a new section
+                if line.strip().startswith('['):
+                    if in_peer_section and not skip_current_peer:
+                        # Add the previous peer section if it wasn't skipped
+                        keep_lines.append('[Peer]')
+                        keep_lines.extend(peer_lines)
+
+                    # Reset for new section
+                    if line.strip() == '[Peer]':
+                        in_peer_section = True
+                        skip_current_peer = False
+                        peer_lines = [] # Store peer lines temporarily
+                    else:
+                        # Non-peer section, add directly
+                        in_peer_section = False
+                        keep_lines.append(line)
+                
+                elif in_peer_section:
+                    # Check if this is the peer we want to remove
+                    if line.strip().startswith('PublicKey') and public_key in line:
+                        skip_current_peer = True
+                        found_peer = True
+
+                    # Store the lines for this peer
+                    if not skip_current_peer:
+                        peer_lines.append(line)
+                
+                else:
+                    # Not in a peer section, add directly
+                    keep_lines.append(line)
+
+            # Don't forget to add the last peer section if it exists and wasn't skipped
+            if in_peer_section and not skip_current_peer:
+                keep_lines.append('[Peer]')
+                keep_lines.extend(peer_lines)
+
+            if not found_peer:
+                logger.warning(f"Public key {public_key} not found in configuration")
+
+        except Exception as e:
+            logger.exception(f"Error editing {path_to_conf}")
+            self._restore_config_from_backup(path_to_conf, path_to_backup)
+            return False
+            
+        # Join the kept lines back into a single string with newlines
+        modified_content = '\n'.join(keep_lines)
+
+        # Write the modified content back to the config file
+        try:
+            logger.info(f"Writing modified configuration to {path_to_conf}")
+            write_result = subprocess.run(
+                ["sudo", "tee", path_to_conf], 
+                input=modified_content, 
+                check=False,
+                capture_output=True,
+                text=True
+            )
+            
+            if write_result.returncode != 0:
+                logger.error(f"Failed to write modified config: {write_result.stderr}")
+                return False
+                
+            logger.info(f"Successfully removed peer from {path_to_conf}")
+            return True
+        except Exception as e:
+            logger.exception(f"Error writing to {path_to_conf}")
+            self._restore_config_from_backup(path_to_conf, path_to_backup)
+            return False
+
+
+    def remove_peer(self, public_key):
+        """Remove a peer from both the WireGuard interface and configuration file"""
+        
+        # First try to remove from interface
+        interface_success = self._remove_peer_from_interface(public_key)
+        if not interface_success:
+            logger.error(f"Failed to remove peer from interface")
+            # Continue to config removal despite interface failure
+        
+        # Then remove from config file
+        config_success = self._remove_peer_from_config(public_key)
+        if not config_success:
+            logger.error(f"Failed to remove peer from configuration file")
+            return False
+        
+        # Determine overall success
+        if interface_success and config_success:
+            logger.info(f"Successfully removed peer {public_key}")
+            return True
+        else:
+            logger.warning(f"Partial success removing peer {public_key} - " +
+                        f"Interface: {'Success' if interface_success else 'Failed'}, " +
+                        f"Config: {'Success' if config_success else 'Failed'}")
+            return False

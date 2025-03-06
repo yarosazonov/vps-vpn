@@ -4,8 +4,20 @@
 import sys
 import argparse
 import re
+import logging
 from pathlib import Path
 from tabulate import tabulate
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("/var/log/wireguard-usage/vpnmon.log"),
+        logging.StreamHandler()  # Also output to console
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path so we can import vpnmon
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -61,7 +73,7 @@ def main():
 
     if args.command == "setup":
         monitor.setup()
-        print("Database intialized successfully")
+        print("Database initialized successfully")
 
 
 
@@ -93,7 +105,7 @@ def main():
 
 
     elif args.command == "update-peer":
-        if monitor.update_peer_info(args.public_key, args.name, args.email):
+        if monitor.update_info(args.public_key, args.name, args.email):
             print(f"Peer {args.public_key} updated successfully")
         else:
             print(f"Failed to update peer {args.public_key}")
@@ -116,7 +128,7 @@ def main():
             sys.exit(1)
         
         # Add user to database
-        if not monitor.update_peer_info(keys["public_key"], args.name, args.email):
+        if not monitor.update_info(keys["public_key"], args.name, args.email):
             print("Failed to add user to database")
             sys.exit(1)
         
@@ -141,13 +153,19 @@ def main():
 
 
 
-
     elif args.command == "delete-peer":
-        
+        print(f"Attempting to delete peers for email: {args.email}")
+        if monitor.delete_peer(args.email):
+            print(f"Successfully deleted peers for {args.email}")
+        else:
+            print(f"Failed to delete all peers for {args.email}. Check logs for details.")
+
 
 
     else:
         parser.print_help()
+
+
 
 if __name__ == "__main__":
     main()
