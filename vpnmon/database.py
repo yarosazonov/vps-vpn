@@ -65,6 +65,7 @@ class Database:
                 SELECT 
                     m.public_key,
                     p.name,
+                    p.email,
                     m.year_month,
                     m.accumulated_received,
                     m.accumulated_sent,

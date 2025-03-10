@@ -44,18 +44,19 @@ class VPNMonitor:
         formatted_data = []
 
         for row in raw_data:
-            received_mb = round(row[3] / 1024 / 1024, 2)
-            sent_mb = round(row[4] / 1024 / 1024, 2)
-            total_mb = round((row[3] + row[4]) / 1024 / 1024, 2)
+            received_mb = round(row[4] / 1024 / 1024, 2)
+            sent_mb = round(row[5] / 1024 / 1024, 2)
+            total_mb = round((row[4] + row[5]) / 1024 / 1024, 2)
 
             formatted_data.append({
                 'public_key': row[0],
                 'name': row[1] or 'Unknown',
-                'month': row[2],
+                'email': row[2] or 'Unknown',
+                'month': row[3],
                 'received_mb': received_mb,
                 'sent_mb': sent_mb,
                 'total_mb': total_mb,
-                'last_updated': row[5]
+                'last_updated': row[6]
             })
         return formatted_data
     
@@ -87,25 +88,78 @@ class VPNMonitor:
         
         logger.info(f"Found {len(public_keys)} peers for email {email}")
     
-        all_successful = True
-        deleted_count = 0
-
-        # Process each key
+        successful_count = 0
+        total_count = len(public_keys)
+        
+        # Process each peer individually
         for key in public_keys:
             logger.info(f"Attempting to remove peer {key}")
- 
-            # Remove from WireGuard
+            
+            # Try to remove from WireGuard
             wg_success = self.wireguard.remove_peer(key)
             
-            # Remove from database
-            db_success = self.db.delete_peer(key, keep_usage_history)
-
-            if wg_success and db_success:
-                logger.info(f"Successfully removed peer {key}")
-                deleted_count += 1
+            if wg_success:
+                # Only update database if WireGuard operation succeeded
+                if self.db.delete_peer(key, keep_usage_history):
+                    logger.info(f"Successfully removed peer {key}")
+                    successful_count += 1
+                else:
+                    logger.error(f"Removed from WireGuard but failed to delete from database: {key}")
             else:
-                logger.error(f"Failed to completely remove peer {key}")
-                all_successful = False
+                logger.error(f"Failed to remove peer {key} from WireGuard, database unchanged")
         
-        logger.info(f"Deleted {deleted_count} of {len(public_keys)} peers for {email}")
-        return all_successful and deleted_count > 0
+        logger.info(f"Deleted {successful_count} of {total_count} peers for {email}")
+        return successful_count > 0
+    
+
+
+    def sync_database_with_interface(self, auto_fix=False):
+        """Verify and optionally fix inconsistencies between WireGuard and database
+        
+        Args:
+            auto_fix: If True, automatically resolve incosistencies
+
+        Returns:
+            Dict with counts of inconsistencies and resolved issues
+        """ 
+        logger.info("Starting sync between WireGuard interface and database")
+
+        # Get active peers from WireGUard
+        wg_peers = self.wireguard.get_peer_data()
+        wg_keys = set(peer['public_key'] for peer in wg_peers)
+
+        # Get all peers from database
+        with sqlite3.connect(self.db.db_file) as conn:
+            db_peers = conn.execute("SELECT public_key FROM peers").fetchall()
+        db_keys = set(peer[0] for peer in db_peers)
+
+        # Find inconsistencies
+        missing_in_db = wg_keys - db_keys
+        missing_in_wg = db_keys - wg_keys
+
+        result = {
+            'peers_in_wg': len(wg_keys),
+            'peers_in_db': len(db_keys),
+            'missing_in_db': list(missing_in_db),
+            'missing_in_wg': list(missing_in_wg),
+            'fixed_count': 0
+        }
+
+        # Handle auto_fix if requested
+        if auto_fix:
+            # Add missing peers to database
+            for key in missing_in_db:
+                logger.info(f"Adding missing peer {key} to database")
+                self.db.update_peer_info(key, name=f"Auto-added {key[:8]}")
+                result['fixed_count'] += 1
+
+            # Remove database entries for peers not in WireGuard
+            for key in missing_in_wg:
+                logger.info(f"Removing peer {key} from database")
+                self.db.delete_peer(key)
+                result['fixed_count'] += 1
+
+        logger.info(f"Sync completed. Found {len(missing_in_db)} peers missing in DB, " + 
+                f"{len(missing_in_wg)} peers missing in WireGuard")
+                
+        return result

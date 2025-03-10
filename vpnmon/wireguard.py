@@ -212,12 +212,17 @@ class WireGuard:
         # single backup setup
         path_to_backup = Path(f"/etc/wireguard/{self.interface}_backup_.conf")
 
-        # Check if file exists
-        if not os.path.exists(path_to_conf):
-            logger.error(f"Configuration file {path_to_conf} does not exist")
-            return False
-        else:
+        # Check if file exists using sudo
+        try:
+            subprocess.run(
+                ["sudo", "test", "-f", str(path_to_conf)], 
+                check=True, 
+                stderr=subprocess.PIPE
+            )
             logger.info("Config found")
+        except subprocess.CalledProcessError:
+            logger.error(f"Configuration file {path_to_conf} does not exist or is not accessible")
+            return False
 
         try:
             # Attempting to make a backup of .conf
