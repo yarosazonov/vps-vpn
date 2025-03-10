@@ -152,7 +152,7 @@ class Database:
                     
                     if existing:
                         # Update existing peer
-                        print(f"Updating existing peer: {public_key}")
+                        logger.info(f"Updating existing peer: {public_key}")
                         if name is not None or email is not None:
                             query = "UPDATE peers SET "
                             params = []
@@ -184,8 +184,7 @@ class Database:
                 return False
             except Exception as e:
                 print(f"Database error: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.exception(f"Error updating peer {public_key}")
                 return False
         
 
