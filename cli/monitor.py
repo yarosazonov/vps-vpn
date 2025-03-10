@@ -8,11 +8,14 @@ import logging
 from pathlib import Path
 from tabulate import tabulate
 
+script_dir = Path(__file__).parent
+log_file = script_dir / "vpnmon.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("/var/log/wireguard-usage/vpnmon.log"),
+        logging.FileHandler(log_file),
         logging.StreamHandler()  # Also output to console
     ]
 )
@@ -59,7 +62,11 @@ def setup_argparse():
 
     # Delete a peer by an email
     delete_parser = subparsers.add_parser("delete-peer", help="Deletes a peer by an email")
-    delete_parser.add_argument("email", type=email_validator, help="User's email for deletion")
+    delete_parser.add_argument("email", help="User's email for deletion")
+
+    # Sync db and interface():
+    sync_parser = subparsers.add_parser("sync", help="Sync database with WireGuard interface")
+    sync_parser.add_argument("--fix", action="store_true", help="Automatically fix inconsistencies")
 
     return parser
 
@@ -92,10 +99,10 @@ def main():
             print("No data found")
             return
         
-        headers = ['Public Key', 'Name', 'Month', 'MB Received', 'MB Sent', 'MB Total', 'Last Updated']
+        headers = ['Public Key', 'Name', 'Email', 'Month', 'MB Received', 'MB Sent', 'MB Total', 'Last Updated']
         table_data = [
             [
-                d['public_key'], d['name'], d['month'], 
+                d['public_key'], d['name'], d['email'], d['month'], 
                 d['received_mb'], d['sent_mb'], d['total_mb'],
                 d['last_updated']
             ] for d in data
@@ -159,6 +166,33 @@ def main():
             print(f"Successfully deleted peers for {args.email}")
         else:
             print(f"Failed to delete all peers for {args.email}. Check logs for details.")
+
+
+
+    elif args.command == "sync":
+        print("Checking for inconsistencies between WireGuard and database...")
+        result = monitor.sync_database_with_interface(auto_fix=args.fix)
+        
+        if not result['missing_in_db'] and not result['missing_in_wg']:
+            print("✓ WireGuard and database are in sync!")
+            print(f"  • {result['peers_in_wg']} peers found in both systems")
+        else:
+            print("! Found inconsistencies:")
+            
+            if result['missing_in_db']:
+                print(f"  • {len(result['missing_in_db'])} peers in WireGuard but missing from database:")
+                for key in result['missing_in_db']:
+                    print(f"    - {key}")
+                    
+            if result['missing_in_wg']:
+                print(f"  • {len(result['missing_in_wg'])} peers in database but missing from WireGuard:")
+                for key in result['missing_in_wg']:
+                    print(f"    - {key}")
+            
+            if args.fix:
+                print(f"\n✓ Fixed {result['fixed_count']} inconsistencies")
+            else:
+                print("\nRun with --fix to automatically resolve these inconsistencies")
 
 
 
