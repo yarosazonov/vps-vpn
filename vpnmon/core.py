@@ -101,7 +101,6 @@ class VPNMonitor:
             if wg_success:
                 # Only update database if WireGuard operation succeeded
                 if self.db.delete_peer(key, keep_usage_history):
-                    logger.info(f"Successfully removed peer {key}")
                     successful_count += 1
                 else:
                     logger.error(f"Removed from WireGuard but failed to delete from database: {key}")

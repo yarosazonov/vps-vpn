@@ -209,6 +209,7 @@ class Database:
         Returns:
             bool: True if successful, False otherwise
         """
+        logger.info(f"Beginning transaction for deletion of {public_key} from the database")
         try:
             with sqlite3.connect(self.db_file) as conn:
                 # Start a transaction
@@ -223,6 +224,7 @@ class Database:
 
                 # Commit transaction
                 conn.commit()
+                logger.info("Successfully removed the entry from the database")
                 return True
         except Exception as e:
             logger.exception(f"Error deleting peer {public_key} from database")
