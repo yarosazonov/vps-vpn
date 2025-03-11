@@ -2,7 +2,7 @@
 
 import subprocess
 import logging
-import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -100,43 +100,56 @@ class WireGuard:
     def get_next_ip(self, config_file="/etc/wireguard/wg0.conf"):
         """Get the next available IP address in the subnet."""
         try:
-            # Read config file
-            with open(config_file, 'r') as f:
-                config = f.readlines()
+            # Read config file using sudo
+            logger.info(f"Finding next available IP from {config_file}")
+            read_result = subprocess.run(
+                ["sudo", "cat", config_file],
+                check=True, 
+                capture_output=True, 
+                text=True
+            )
+            config_lines = read_result.stdout.splitlines()
                 
             # Extract all AllowedIPs
-            ips = []
-            for line in config:
+            used_ips = set()
+            for line in config_lines:
                 if line.strip().startswith("AllowedIPs"):
                     # Extract IP from format like "AllowedIPs = 10.0.0.2/32"
                     ip_part = line.split("=")[1].strip()
                     ip = ip_part.split("/")[0].strip()
-                    ips.append(ip)
+                    if ip.startswith("10.0.0."):
+                        used_ips.add(ip)
             
-            # Find the highest IP in the 10.0.0.x range
-            highest = 1  # Start at 1 since .1 is usually the server
-            for ip in ips:
-                if ip.startswith("10.0.0."):
-                    try:
-                        num = int(ip.split(".")[-1])
-                        if num > highest:
-                            highest = num
-                    except ValueError:
-                        continue
+            # Find the first available IP starting from 10.0.0.2
+            # (10.0.0.1 is typically the server)
+            for i in range(2, 255):
+                candidate_ip = f"10.0.0.{i}"
+                if candidate_ip not in used_ips:
+                    next_ip = f"{candidate_ip}/32"
+                    logger.info(f"Found available IP: {next_ip}")
+                    return next_ip
                         
-            # Return next IP
-            return f"10.0.0.{highest + 1}/32"
+            # If we get here, all IPs are taken (unlikely)
+            logger.error("No available IPs in the 10.0.0.x range")
+            raise RuntimeError("No available IPs in subnet - all 253 addresses are in use")
+        
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error accessing config file: {e}")
+            raise RuntimeError("Cannot determine next available IP - permission denied")
         except Exception as e:
-            logger.exception("Error finding next IP")
-            return "10.0.0.2/32"  # Fallback to first client IP
+            logger.exception(f"Error finding next IP")
+            raise RuntimeError("Cannot determine next available IP")
         
     
 
     def get_server_public_key(self, config_file="/etc/wireguard/wg0.conf"):
         """Get the server's public key from the config file."""
         try:   
-            # Fallback: Get from interface directly
-            output = subprocess.check_output(["wg", "show", self.interface, "public-key"], text=True)
+            # Use sudo to get the public key
+            output = subprocess.check_output(
+                ["sudo", "wg", "show", self.interface, "public-key"], 
+                text=True
+            )
             return output.strip()
         except Exception as e:
             logger.exception("Error getting server public key")
@@ -150,8 +163,11 @@ class WireGuard:
             # Get public IP from external service
             ip = subprocess.check_output(["curl", "-s", "https://api.ipify.org"], text=True).strip()
             
-            # Get listening port from wg show
-            output = subprocess.check_output(["wg", "show", self.interface], text=True)
+            # Get listening port from wg show with sudo
+            output = subprocess.check_output(
+                ["sudo", "wg", "show", self.interface], 
+                text=True
+            )
             for line in output.split("\n"):
                 if "listening port" in line:
                     port = line.split(":")[1].strip()
