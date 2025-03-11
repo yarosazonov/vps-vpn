@@ -236,7 +236,7 @@ class Database:
                             return True
                     else:
                         # Insert new peer
-                        print(f"Inserting new peer: {public_key}, name: {name}, email: {email}")
+                        logger.info(f"Inserting new peer: {public_key}, name: {name}, email: {email}")
                         conn.execute(
                             "INSERT INTO peers (public_key, name, email) VALUES (?, ?, ?)",
                             (public_key, name, email)
