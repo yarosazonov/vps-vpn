@@ -128,43 +128,73 @@ def main():
 
 
     elif args.command == "generate-peer":
-        # Generate keys
-        keys = monitor.wireguard.generate_keys()
-        if not keys:
-            print("Failed to generate WireGuard keys")
-            sys.exit(1)
+        try:
+            # Generate keys
+            keys = monitor.wireguard.generate_keys()
+            if not keys:
+                print("Failed to generate WireGuard keys")
+                sys.exit(1)
 
-        # Get next available IP
-        next_ip = monitor.wireguard.get_next_ip()
+            # Get next available IP
+            try:
+                next_ip = monitor.wireguard.get_next_ip()
+            except RuntimeError as e:
+                print(f"Error: {e}")
+                sys.exit(1)
 
-        # Add to WireGuard config
-        if not monitor.wireguard.add_peer_to_config(keys["public_key"], next_ip):
-            print("Failed to add peer to WireGuard configuration")
-            sys.exit(1)
-        
-        # Add user to database
-        if not monitor.update_info(keys["public_key"], args.name, args.email):
-            print("Failed to add user to database")
-            sys.exit(1)
-        
-        # Show results
-        print("\nNew WireGuard Peer Generated\n")
-        print(f"Name: {args.name}")
-        if args.email:
+            # Add to WireGuard config
+            if not monitor.wireguard.add_peer_to_config(keys["public_key"], next_ip):
+                print("Failed to add peer to WireGuard configuration")
+                sys.exit(1)
+            
+            # Add user to database
+            if not monitor.update_info(keys["public_key"], args.name, args.email):
+                print("Failed to add user to database")
+                sys.exit(1)
+            
+            # Create the client configuration
+            server_pubkey = monitor.wireguard.get_server_public_key()
+            server_endpoint = monitor.wireguard.get_server_endpoint()
+            
+            config = f"""[Interface]
+PrivateKey = {keys['private_key']}
+Address = {next_ip}
+DNS = 1.1.1.1, 8.8.8.8
+
+[Peer]
+PublicKey = {server_pubkey}
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = {server_endpoint}
+PersistentKeepalive = 25
+        """
+            
+            # Create a safe filename from the name
+            safe_name = args.name.replace(' ', '_').replace('/', '-')
+            safe_name = ''.join(c for c in safe_name if c.isalnum() or c in '_-')
+            
+            # Create configs directory if it doesn't exist
+            configs_dir = Path(script_dir.parent / "cli" / "configs")
+            configs_dir.mkdir(exist_ok=True)
+            
+            # Save the configuration to a file
+            config_file = configs_dir / f"{safe_name}.conf"
+            with open(config_file, "w") as f:
+                f.write(config)
+            
+            # Show results to the user
+            print("\nNew WireGuard Peer Generated\n")
+            print(f"Name: {args.name}")
             print(f"Email: {args.email}")
-        print(f"IP Address: {next_ip}")
-        print("\nClient Configuration:")
-        print("---------------------")
-        print("[Interface]")
-        print(f"PrivateKey = {keys['private_key']}")
-        print("Address = " + next_ip)
-        print("DNS = 1.1.1.1, 8.8.8.8")
-        print()
-        print("[Peer]")
-        print(f"PublicKey = {monitor.wireguard.get_server_public_key()}")
-        print("AllowedIPs = 0.0.0.0/0")
-        print(f"Endpoint = {monitor.wireguard.get_server_endpoint()}")
-        print("PersistentKeepalive = 25")
+            print(f"IP Address: {next_ip}")
+            print(f"\nConfiguration saved to: {config_file}\n")
+            print("Client Configuration:")
+            print("---------------------")
+            print(config)
+
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            logger.exception("Error in generate-peer command")
+            sys.exit(1)
 
 
 
