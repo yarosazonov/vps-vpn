@@ -38,24 +38,24 @@ class VPNMonitor:
     
 
             
-    def get_usage(self, public_key: str = None, month: str = None):
+    def get_usage(self, public_key: str = None, month: str = None, monthly_only: bool = True):
         """Get formatted usage data."""
-        raw_data = self.db.get_peer_usage(public_key, month)
+        raw_data = self.db.get_peer_usage(public_key, month, monthly_only)
         formatted_data = []
 
         for row in raw_data:
-            received_mb = round(row[4] / 1024 / 1024, 2)
-            sent_mb = round(row[5] / 1024 / 1024, 2)
-            total_mb = round((row[4] + row[5]) / 1024 / 1024, 2)
+            received_gb = round(row[4] / (1024 * 1024 * 1024), 2)
+            sent_gb = round(row[5] / (1024 * 1024 * 1024), 2)
+            total_gb = round((row[4] + row[5]) / (1024 * 1024 * 1024), 2)
 
             formatted_data.append({
                 'public_key': row[0],
                 'name': row[1] or 'Unknown',
                 'email': row[2] or 'Unknown',
                 'month': row[3],
-                'received_mb': received_mb,
-                'sent_mb': sent_mb,
-                'total_mb': total_mb,
+                'received_gb': received_gb,
+                'sent_gb': sent_gb,
+                'total_gb': total_gb,
                 'last_updated': row[6]
             })
         return formatted_data
