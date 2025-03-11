@@ -42,8 +42,10 @@ def setup_argparse():
     usage_parser = subparsers.add_parser("usage", help="Show usage statistics")
     usage_parser.add_argument("--month", help="Filter by month (YYYY-MM format)")
     usage_parser.add_argument("--peer", help="Filter by peer public key")
+    usage_parser.add_argument("--accumulated", action="store_true", 
+                            help="Show accumulated values instead of monthly-only usage")
 
-    # Update peer command
+    # Update a peer command
     peer_parser = subparsers.add_parser("update-peer", help="Update peer information")
     peer_parser.add_argument("public_key", help="Peer public key")
     peer_parser.add_argument("--name", help="Peer friendly name")
@@ -56,6 +58,7 @@ def setup_argparse():
         if not re.match(pattern, email):
             raise argparse.ArgumentTypeError(f"Invalid email format: {email}")
         return email
+    
     generate_parser = subparsers.add_parser("generate-peer", help="Generate a new WireGuard peer")
     generate_parser.add_argument("name", help="User's name")
     generate_parser.add_argument("email", type=email_validator, help="User's email (required)")
@@ -93,17 +96,22 @@ def main():
 
 
     elif args.command == "usage":
-        data = monitor.get_usage(args.peer, args.month)
+        data = monitor.get_usage(args.peer, args.month, not args.accumulated)
 
         if not data:
             print("No data found")
             return
         
-        headers = ['Public Key', 'Name', 'Email', 'Month', 'MB Received', 'MB Sent', 'MB Total', 'Last Updated']
+        # Change headers to indicate monthly or accumulated
+        usage_type = "Accumulated" if args.accumulated else "Monthly"
+        headers = ['Public Key', 'Name', 'Email', 'Month', 
+                f'{usage_type} GB Received', f'{usage_type} GB Sent', 
+                f'{usage_type} GB Total', 'Last Updated']
+        
         table_data = [
             [
                 d['public_key'], d['name'], d['email'], d['month'], 
-                d['received_mb'], d['sent_mb'], d['total_mb'],
+                d['received_gb'], d['sent_gb'], d['total_gb'],
                 d['last_updated']
             ] for d in data
         ]

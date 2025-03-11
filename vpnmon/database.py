@@ -58,9 +58,75 @@ class Database:
 
 
 
-    def get_peer_usage(self, public_key: str = None, month: str = None):
+    def get_peer_usage(self, public_key: str = None, month: str = None, monthly_only: bool = True):
         """Get usage statistics for one or all peers."""
+        # Default to current month if not specified
+        if month is None:
+            month = datetime.now().strftime('%Y-%m')
+
         with sqlite3.connect(self.db_file) as conn:
+            if monthly_only:
+                # Calculate the previous month
+                try:
+                    year, month_num = map(int, month.split('-'))
+                    if month_num == 1:  # January
+                        prev_month = f"{year-1}-12"
+                    else:
+                        prev_month = f"{year}-{month_num-1:02d}"
+                    
+                    # Get current month's data along with previous month's data
+                    query = """
+                        SELECT 
+                            m.public_key,
+                            p.name,
+                            p.email,
+                            m.year_month,
+                            m.accumulated_received,
+                            m.accumulated_sent,
+                            m.last_updated,
+                            (SELECT accumulated_received FROM monthly_usage 
+                            WHERE public_key = m.public_key AND year_month = ?) as prev_received,
+                            (SELECT accumulated_sent FROM monthly_usage 
+                            WHERE public_key = m.public_key AND year_month = ?) as prev_sent
+                        FROM monthly_usage m
+                        LEFT JOIN peers p ON m.public_key = p.public_key
+                        WHERE m.year_month = ?
+                    """
+                    params = [prev_month, prev_month, month]
+
+                    if public_key:
+                        query += " AND m.public_key = ?"
+                        params.append(public_key)
+                        
+                    query += " ORDER BY m.last_updated DESC"
+                    
+                    rows = conn.execute(query, params).fetchall()
+
+                    # Process rows to calculate monthly-only values
+                    result = []
+                    for row in rows:
+                        # Calculate monthly usage as difference between current and previous
+                        prev_received = row[7] if row[7] is not None else 0
+                        prev_sent = row[8] if row[8] is not None else 0
+                        
+                        monthly_received = row[4] - prev_received
+                        monthly_sent = row[5] - prev_sent
+                        
+                        # Handle counter resets (if monthly is negative, use full value)
+                        if monthly_received < 0:
+                            monthly_received = row[4]
+                        if monthly_sent < 0:
+                            monthly_sent = row[5]
+                        
+                        result.append((row[0], row[1], row[2], row[3], 
+                                    monthly_received, monthly_sent, row[6]))
+                        
+                    return result
+                except Exception as e:
+                    logger.exception("Error calculating monthly values")
+                    # Fall back to accumulated values
+
+
             query = """
                 SELECT 
                     m.public_key,
@@ -72,17 +138,13 @@ class Database:
                     m.last_updated
                 FROM monthly_usage m
                 LEFT JOIN peers p ON m.public_key = p.public_key
-                WHERE 1=1
+                WHERE m.year_month = ?
             """
-            params = []
+            params = [month]
             
             if public_key:
                 query += " AND m.public_key = ?"
                 params.append(public_key)
-            
-            if month:
-                query += " AND m.year_month = ?"
-                params.append(month)
                 
             query += " ORDER BY m.year_month DESC, m.last_updated DESC"
             
