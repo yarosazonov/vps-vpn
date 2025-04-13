@@ -3,3 +3,4 @@ __pycache__
 *.db
 cli/vpnmon.log
 cli/configs/
+get-docker.sh
