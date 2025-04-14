@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  wireguard-monitor:
+    build: .
+    container_name: wireguard-monitor
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - SERVERURL=${SERVER_URL}
+      - SERVER_PORT=${SERVER_PORT:-51820}
+      - PEERS=0
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.0.1.0/24
+      - ALLOWEDIPS=0.0.0.0/0
+      # Add monitoring env vars
+      - WG_CONFIG_DIR=/config
+    volumes:
+      - ./config:/config
+      - /lib/modules:/lib/modules:ro
+      - ./data:/data
+    ports:
+      - "${SERVER_PORT:-51820}:${SERVER_PORT:-51820}/udp"
+      - "5000:5000"  # Flask web interface
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped

@@ -1,7 +1,4 @@
-python/venv/
-python/__pycache__
-python/vpnmon/__pycache__
-python/web/__pycache__
-*.db
-python/cli/vpnmon.log
-python/cli/configs/
+python/config
+python/.env
+python/vpn-monitor/vpnmon/__pycache__
+python/vpn-monitor/web/__pycache__

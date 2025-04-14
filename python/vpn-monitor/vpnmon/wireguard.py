@@ -3,6 +3,7 @@
 import subprocess
 import logging
 import sys
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -10,16 +11,21 @@ from typing import List, Dict, Optional
 logger = logging.getLogger(__name__)
 
 class WireGuard:
-    def __init__(self, interface: str = "wg0"):
-        self.interface = interface
+    def __init__(self, interface: str = None):
+        self.interface = interface or os.environ.get("WG_INTERFACE", "wg0")
 
-
+        # Get the base config directory
+        base_config_dir = os.environ.get("WG_CONFIG_DIR", "/config")
+        
+        # Set path to wg_confs subdirectory
+        self.config_dir = os.path.join(base_config_dir, "wg_confs")
+        self.config_file = os.path.join(self.config_dir, f"{self.interface}.conf")
 
     def get_peer_data(self) -> List[Dict]:
         """Get current WireGuard statistics for all peers."""
         try:
             output = subprocess.check_output(
-                ["sudo", "wg", "show", self.interface, "dump"],
+                ["wg", "show", self.interface, "dump"],
                 text=True
             )
             peers = []
@@ -60,13 +66,16 @@ class WireGuard:
 
 
 
-    def add_peer_to_config(self, public_key, allowed_ips, config_file="/etc/wireguard/wg0.conf"):
+    def add_peer_to_config(self, public_key, allowed_ips, config_file=None):
         """Dynamically add a peer to WireGuard and persist it in the config file."""
         try:
+            # Use the instance config_file if none provided
+
+            config_file = config_file or self.config_file
             # Apply the peer dynamically
             logger.info(f"Attempting to set WireGuard peer: {public_key} with allowed IPs: {allowed_ips}")
             set_result = subprocess.run([
-                "sudo", "wg", "set", self.interface, "peer", 
+                "wg", "set", self.interface, "peer", 
                 public_key, "allowed-ips", allowed_ips
             ], check=False, capture_output=True, text=True)
             
@@ -74,11 +83,11 @@ class WireGuard:
                 logger.error(f"WireGuard set command failed: {set_result.stderr}")
                 return False
             
-            # Append to the configuration file for persistence using sudo
+            # Append to the configuration file for persistence 
             logger.info(f"Attempting to update config file: {config_file}")
             peer_config = f"\n[Peer]\nPublicKey = {public_key}\nAllowedIPs = {allowed_ips}\n"
             tee_result = subprocess.run(
-                ["sudo", "tee", "-a", config_file], 
+                ["tee", "-a", config_file], 
                 input=peer_config, 
                 check=False,
                 capture_output=True,
@@ -97,13 +106,19 @@ class WireGuard:
     
 
 
-    def get_next_ip(self, config_file="/etc/wireguard/wg0.conf"):
+    def get_next_ip(self, config_file=None):
         """Get the next available IP address in the subnet."""
         try:
-            # Read config file using sudo
+            # Use the instance config_file if none provided
+            config_file = config_file or self.config_file
             logger.info(f"Finding next available IP from {config_file}")
+
+            # Get the subnet from environment or default to 10.0.1
+            subnet_base = os.environ.get("WG_SUBNET_BASE", "10.0.1")
+
+            # Read config file using
             read_result = subprocess.run(
-                ["sudo", "cat", config_file],
+                ["cat", config_file],
                 check=True, 
                 capture_output=True, 
                 text=True
@@ -114,23 +129,23 @@ class WireGuard:
             used_ips = set()
             for line in config_lines:
                 if line.strip().startswith("AllowedIPs"):
-                    # Extract IP from format like "AllowedIPs = 10.0.0.2/32"
+                    # Extract IP from format like "AllowedIPs = 10.0.1.2/32"
                     ip_part = line.split("=")[1].strip()
                     ip = ip_part.split("/")[0].strip()
-                    if ip.startswith("10.0.0."):
+                    if ip.startswith(f"{subnet_base}."):
                         used_ips.add(ip)
             
-            # Find the first available IP starting from 10.0.0.2
-            # (10.0.0.1 is typically the server)
+            # Find the first available IP starting from x.x.x.2
+            # (x.x.x.1 is typically the server)
             for i in range(2, 255):
-                candidate_ip = f"10.0.0.{i}"
+                candidate_ip = f"{subnet_base}.{i}"
                 if candidate_ip not in used_ips:
                     next_ip = f"{candidate_ip}/32"
                     logger.info(f"Found available IP: {next_ip}")
                     return next_ip
                         
             # If we get here, all IPs are taken (unlikely)
-            logger.error("No available IPs in the 10.0.0.x range")
+            logger.error(f"No available IPs in the {subnet_base}.x range")
             raise RuntimeError("No available IPs in subnet - all 253 addresses are in use")
         
         except subprocess.CalledProcessError as e:
@@ -142,12 +157,15 @@ class WireGuard:
         
     
 
-    def get_server_public_key(self, config_file="/etc/wireguard/wg0.conf"):
+    def get_server_public_key(self, config_file=None):
         """Get the server's public key from the config file."""
         try:   
-            # Use sudo to get the public key
+             # Use the instance config_file if none provided
+            config_file = config_file or self.config_file
+
+            # Get the public key
             output = subprocess.check_output(
-                ["sudo", "wg", "show", self.interface, "public-key"], 
+                ["wg", "show", self.interface, "public-key"], 
                 text=True
             )
             return output.strip()
@@ -163,20 +181,30 @@ class WireGuard:
             # Get public IP from external service
             ip = subprocess.check_output(["curl", "-s", "https://api.ipify.org"], text=True).strip()
             
-            # Get listening port from wg show with sudo
-            output = subprocess.check_output(
-                ["sudo", "wg", "show", self.interface], 
-                text=True
-            )
-            for line in output.split("\n"):
-                if "listening port" in line:
-                    port = line.split(":")[1].strip()
-                    return f"{ip}:{port}"
-                    
-            return f"{ip}:51820"  # Default port if not found
+            # Get port from environment variable or WireGuard
+            port = os.environ.get("SERVER_PORT")
+            
+            if not port:
+                # Try to get from WireGuard if not in environment
+                output = subprocess.check_output(
+                    ["wg", "show", self.interface], 
+                    text=True
+                )
+                for line in output.split("\n"):
+                    if "listening port" in line:
+                        port = line.split(":")[1].strip()
+                        break
+
+            # Use default if still not found        
+            if not port:
+                port = "51820"  # Default port if not found
+            
+            return f"{ip}:{port}"
         except Exception as e:
             logger.exception("Error getting server endpoint")
-            return "95.179.186:51820"  # Fallback
+            # Use environment variable in fallback too
+            port = os.environ.get("SERVER_PORT", "53")
+            return f"95.179.186.138:{port}"  # Fallback with configurable port
         
 
 
@@ -186,7 +214,7 @@ class WireGuard:
             # Apply the peer dynamically
             logger.info(f"Attempting to remove a WireGuard peer: {public_key}")
             set_result = subprocess.run([
-                "sudo", "wg", "set", self.interface, "peer", public_key, "remove"
+                "wg", "set", self.interface, "peer", public_key, "remove"
             ], check=False, capture_output=True, text=True)
 
             if set_result.returncode != 0:
@@ -206,7 +234,7 @@ class WireGuard:
         try:
             logger.warning(f"Attempting to restore {self.interface}.conf from backup")
             restore_result = subprocess.run([
-                "sudo", "cp", "-f", path_to_backup, path_to_conf
+                "cp", "-f", path_to_backup, path_to_conf
             ], check=False, capture_output=True, text=True)
             
             if restore_result.returncode != 0:
@@ -224,14 +252,14 @@ class WireGuard:
     def _remove_peer_from_config(self, public_key):
         """Remove peer from .conf file"""
         # Path to .conf
-        path_to_conf = Path(f"/etc/wireguard/{self.interface}.conf")
+        path_to_conf = Path(self.config_file)
         # single backup setup
-        path_to_backup = Path(f"/etc/wireguard/{self.interface}_backup_.conf")
+        path_to_backup = Path(f"{self.config_file}_backup_")
 
-        # Check if file exists using sudo
+        # Check if file exists
         try:
             subprocess.run(
-                ["sudo", "test", "-f", str(path_to_conf)], 
+                ["test", "-f", str(path_to_conf)], 
                 check=True, 
                 stderr=subprocess.PIPE
             )
@@ -244,7 +272,7 @@ class WireGuard:
             # Attempting to make a backup of .conf
             logger.info("Attempt on backup creation")
             make_backup = subprocess.run([
-                "sudo", "cp", path_to_conf, "-p", path_to_backup
+                "cp", path_to_conf, "-p", path_to_backup
             ], check=False, capture_output=True, text=True)
 
             if make_backup.returncode != 0:
@@ -260,7 +288,7 @@ class WireGuard:
         try:
             logger.info(f"Parsing .conf for a peer")
             read_conf = subprocess.run([
-                "sudo", "cat", path_to_conf
+                "cat", path_to_conf
             ], check=False, capture_output=True, text=True)
             conf_lines = read_conf.stdout.split("\n")
 
@@ -325,7 +353,7 @@ class WireGuard:
         try:
             logger.info(f"Writing modified configuration to {path_to_conf}")
             write_result = subprocess.run(
-                ["sudo", "tee", path_to_conf], 
+                ["tee", path_to_conf], 
                 input=modified_content, 
                 check=False,
                 capture_output=True,

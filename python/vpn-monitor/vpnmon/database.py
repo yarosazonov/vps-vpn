@@ -3,13 +3,19 @@
 from pathlib import Path
 import sqlite3
 import logging
+import os
 from typing import Dict, List, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class Database:
-    def __init__(self, data_dir: Path = Path("/var/log/wireguard-usage")):
+    def __init__(self, data_dir=None):
+        # Get data directory from environment or use default/passed value
+        if data_dir is None:
+            data_dir_str = os.environ.get("WG_DATA_DIR", "/data")
+            data_dir = Path(data_dir_str)
+        
         self.data_dir = data_dir
         self.db_file = data_dir / "usage.db"
         

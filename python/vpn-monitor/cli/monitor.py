@@ -1,5 +1,5 @@
 # Created a wrapper script called vpnmon in (/usr/local/bin/)
-#!/opt/vpn-monitor/venv/bin/python3
+#!/usr/bin/python3
 
 import sys
 import argparse
@@ -9,7 +9,7 @@ from pathlib import Path
 from tabulate import tabulate
 
 script_dir = Path(__file__).parent
-log_file = script_dir / "vpnmon.log"
+log_file = Path("/config/vpnmon.log")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -173,7 +173,7 @@ PersistentKeepalive = 25
             safe_name = ''.join(c for c in safe_name if c.isalnum() or c in '_-')
             
             # Create configs directory if it doesn't exist
-            configs_dir = Path(script_dir.parent / "cli" / "configs")
+            configs_dir = Path("/config/client_confs")
             configs_dir.mkdir(exist_ok=True)
             
             # Save the configuration to a file
