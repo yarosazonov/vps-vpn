@@ -2,3 +2,4 @@ python/config
 python/.env
 python/vpn-monitor/vpnmon/__pycache__
 python/vpn-monitor/web/__pycache__
+folder-structure.txt

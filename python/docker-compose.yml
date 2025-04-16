@@ -12,10 +12,10 @@ services:
       - PGID=1000
       - TZ=Europe/Moscow
       - SERVERURL=${SERVER_URL}
-      - SERVER_PORT=${SERVER_PORT:-51820}
+      - SERVERPORT=${SERVER_PORT:-51820}
       - PEERS=0
       - PEERDNS=auto
-      - INTERNAL_SUBNET=10.0.1.0/24
+      - INTERNAL_SUBNET=10.0.0.0/24
       - ALLOWEDIPS=0.0.0.0/0
       # Add monitoring env vars
       - WG_CONFIG_DIR=/config
