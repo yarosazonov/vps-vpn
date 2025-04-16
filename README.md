@@ -44,6 +44,112 @@ The VPN Monitor system follows a modular architecture with three distinct layers
                 └── usage.html # Usage display page
 ```
 
+## Command Line Interface
+
+The VPN Monitor CLI provides a comprehensive set of commands for system management.
+
+### Basic Commands
+
+- `setup` - Initialize database and system
+- `collect` - Collect current VPN usage data
+- `usage` - Display usage statistics
+- `sync` - Ensure database and WireGuard configuration are synchronized
+
+### Peer Management
+
+- `generate-peer` - Generate a new WireGuard peer configuration
+- `update-peer` - Update peer information
+- `delete-peer` - Remove a peer
+
+### Usage Examples
+
+#### Initialize System
+
+```bash
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py setup
+```
+
+#### Collect Usage Data
+
+```bash
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py collect
+```
+
+#### View Usage Statistics
+
+```bash
+# View all usage
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py usage
+
+# Filter by month
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py usage --month 2025-04
+
+# Filter by peer
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py usage --peer <public-key>
+
+# Show accumulated data instead of monthly
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py usage --accumulated
+```
+
+#### Generate a New Peer
+
+```bash
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py generate-peer "John Doe" john.doe@example.com
+```
+
+#### Update Peer Information
+
+```bash
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py update-peer <public-key> --name "New Name" --email "new.email@example.com"
+```
+
+#### Delete a Peer
+
+```bash
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py delete-peer user@example.com
+```
+
+#### Synchronize Database with WireGuard
+
+```bash
+# Check for inconsistencies
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py sync
+
+# Fix inconsistencies automatically
+docker exec -it wireguard-monitor /opt/venv/bin/python3 /app/cli/monitor.py sync --fix
+```
+
+## Database Structure
+
+The VPN Monitor system uses SQLite for data storage. The database contains two main tables:
+
+### Peers Table
+
+Stores information about WireGuard peers.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| public_key | TEXT | Primary key, WireGuard public key |
+| name | TEXT | Peer's friendly name |
+| email | TEXT | Peer's email address |
+| added_on | TIMESTAMP | When the peer was added |
+
+### Monthly Usage Table
+
+Stores usage statistics aggregated by month.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| public_key | TEXT | WireGuard public key (foreign key) |
+| year_month | TEXT | Month of data collection (YYYY-MM) |
+| accumulated_received | INTEGER | Total bytes received |
+| accumulated_sent | INTEGER | Total bytes sent |
+| last_received | INTEGER | Last received counter value |
+| last_sent | INTEGER | Last sent counter value |
+| last_updated | TIMESTAMP | When the data was last updated |
+
+The primary key is a composite of (public_key, year_month).
+
 ## API Python
 
 ### Core Module (`core.py`)

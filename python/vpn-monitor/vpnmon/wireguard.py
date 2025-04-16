@@ -113,8 +113,8 @@ class WireGuard:
             config_file = config_file or self.config_file
             logger.info(f"Finding next available IP from {config_file}")
 
-            # Get the subnet from environment or default to 10.0.1
-            subnet_base = os.environ.get("WG_SUBNET_BASE", "10.0.1")
+            # Get the subnet from environment or default to 10.0.0
+            subnet_base = os.environ.get("WG_SUBNET_BASE", "10.0.0")
 
             # Read config file using
             read_result = subprocess.run(
@@ -129,7 +129,7 @@ class WireGuard:
             used_ips = set()
             for line in config_lines:
                 if line.strip().startswith("AllowedIPs"):
-                    # Extract IP from format like "AllowedIPs = 10.0.1.2/32"
+                    # Extract IP from format like "AllowedIPs = 10.0.0.2/32"
                     ip_part = line.split("=")[1].strip()
                     ip = ip_part.split("/")[0].strip()
                     if ip.startswith(f"{subnet_base}."):
@@ -182,7 +182,7 @@ class WireGuard:
             ip = subprocess.check_output(["curl", "-s", "https://api.ipify.org"], text=True).strip()
             
             # Get port from environment variable or WireGuard
-            port = os.environ.get("SERVER_PORT")
+            port = os.environ.get("SERVERPORT")
             
             if not port:
                 # Try to get from WireGuard if not in environment
@@ -203,8 +203,8 @@ class WireGuard:
         except Exception as e:
             logger.exception("Error getting server endpoint")
             # Use environment variable in fallback too
-            port = os.environ.get("SERVER_PORT", "53")
-            return f"95.179.186.138:{port}"  # Fallback with configurable port
+            port = os.environ.get("SERVERPORT", "51820")
+            return f"95.179.149.125:{port}"  # Fallback with configurable port
         
 
 

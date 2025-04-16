@@ -19,6 +19,7 @@ services:
       - ALLOWEDIPS=0.0.0.0/0
       # Add monitoring env vars
       - WG_CONFIG_DIR=/config
+      - WG_INTERFACE=${WG_INTERFACE}
     volumes:
       - ./config:/config
       - /lib/modules:/lib/modules:ro
