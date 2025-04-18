@@ -1,4 +1,4 @@
-# Hello, this is a backend for WireGuard in Python and Go!
+# Hello, this is a backend toolset for WireGuard in Python
 
 ## Architecture
 
