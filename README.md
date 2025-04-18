@@ -6,7 +6,7 @@ The VPN Monitor system follows a modular architecture with three distinct layers
 
 ### Interface Layer
 - **CLI Module**: Handles command-line interactions for administration
-- **Web Interface**: Provides a browser-based dashboard for monitoring
+- **Web Interface**: Provides a browser-based dashboard for monitoring 
 
 ### Core Logic Layer
 - **VPN Monitoring Core**: Orchestrates application functions and business logic
@@ -22,26 +22,24 @@ The VPN Monitor system follows a modular architecture with three distinct layers
 ```
 .
 ├── README.md
-├── go                         # Reserved for future Go implementations
-└── python
-    ├── Dockerfile             # Container definition
-    ├── docker-compose.yml     # Container orchestration
-    ├── requirements.txt       # Python dependencies
-    └── vpn-monitor
-        ├── cli
-        │   ├── configs        # CLI configuration files
-        │   ├── monitor.py     # Main CLI interface
-        │   └── vpnmon.log     # CLI log file
-        ├── vpnmon
-        │   ├── core.py        # Core application logic
-        │   ├── database.py    # Database operations
-        │   ├── vpnmon_scheduler.py # Automated collection
-        │   └── wireguard.py   # WireGuard-specific operations
-        └── web
-            ├── app.py         # Web server application
-            └── templates
-                ├── index.html # Web interface landing page
-                └── usage.html # Usage display page
+├── Dockerfile             # Container definition
+├── docker-compose.yml     # Container orchestration
+├── requirements.txt       # Python dependencies
+└── vpn-monitor
+    ├── cli
+    │   ├── configs        # CLI configuration files
+    │   ├── monitor.py     # Main CLI interface
+    │   └── vpnmon.log     # CLI log file
+    ├── vpnmon
+    │   ├── core.py        # Core application logic
+    │   ├── database.py    # Database operations
+    │   ├── vpnmon_scheduler.py # Automated collection
+    │   └── wireguard.py   # WireGuard-specific operations
+    └── web
+        ├── app.py         # Web server application
+        └── templates
+            ├── index.html # Web interface landing page
+            └── usage.html # Usage display page
 ```
 
 ## Command Line Interface
